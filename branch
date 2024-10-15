@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+### git branch name
+_branch_name() { git --no-pager rev-parse --abbrev-ref HEAD 2>/dev/null; }
+
+### like pushd for git branches
+_branch_pushb() {
+    git checkout "$1" 2>/dev/null || git checkout -b "$1" 2>/dev/null
+    if (($? == 128)); then
+        git checkout "$1"
+    else
+        [[ "$(_branch_name)" == "$1" ]] || git checkout -b "$1"
+    fi
+}
+
+### git previous branch (like popd for branches)
+_branch_previous() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | grep -Po "checkout: moving from\s*\K\w+.*(?= to ${_})" | grep -v -m1 "$_"; }
+_branch_popb() { git checkout "$(_branch_previous)"; }
+
+### git parent branch
+_branch_parent() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | tac | grep -m1 -Po "checkout: moving from\s*\K\w+.*(?= to ${_})"; }
+
+### git branch status
+_branch_status() { git --no-pager status -s 2>/dev/null; }
+
+### git branch file-changes
+# returns list of files changed on this branch by comparison with <compare_branch>
+# pass explicit ignores using flexible syntax
+# [[A,M,D][:<STRING>]]
+# USAGE EXAMPLE: railsh git_branch_files --ignore=app/assets/images/drinks --ignore 'a:app/views' --ignore=M
+_branch_changes() {
+    local a arg compare_branch ignores fnameonly=false
+    #(WIP)   local -a hides=() shows=()
+    [[ "$1" == +(\-)* ]] || compare_branch="$1"
+    for((a=1;a<=$#;a++)){
+        [[ "${!a,,}" != +(\-)@(name|file|short|abbrev)* ]] || fnameonly=true
+        [[ "${!a,,}" != +(\-)@(ignore)* ]] || {
+            [[ "${!a,,}" == +(\-)@(ignore)*\=* ]] || ((++a))
+            arg="${!a##*\=}"
+            case "${arg,,}" in
+            [adm]|[adm]\:*) [[ "${arg,,}" != [adm]\:* ]] && ignores[0]+="^${arg^}|" || { : "${arg%%\:*}"; ignores[0]+="^${_^}\s*${arg#*\:}|"; } ;;
+            *) ignores[0]+="${arg}|"
+            esac
+        }
+    }
+    _git_diff() {
+        if ((${#ignores} != 0)); then
+            ignores="${ignores:: -1}"
+            [[ "${ignores//[!\|]/}" != +(\|) ]] || ignores="($ignores)"
+            git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)} | grep -Ev "$ignores"
+        else
+            git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)}
+        fi
+    }
+    if $fnameonly ; then
+        _git_diff | awk '{print $2}'
+    else
+        _git_diff
+    fi
+}
+
+_branch_${@}
