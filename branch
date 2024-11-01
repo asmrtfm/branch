@@ -1,5 +1,70 @@
 #!/usr/bin/env bash
 
+[[ "${1,,}" != +(\-)@(h)?(elp) ]] || { cat <<'EOL'
+USAGE:
+   branch <OPTION>
+
+OPTIONS:
+ [info]
+   name       prints name of current branch.
+   parent     prints name of parent branch.
+   previous   prints name of previous branch.
+   repo       prints the name of the repo.
+   owner,     prints account name of user/org that repo belongs to.
+    user,org
+
+ [actions]
+   pushb      like pushd, but for branches.
+   popb       like popd, but for branches.
+   undo       rolls back all changes since last commit (destructively).
+   changes    lists changes on this branch by comparison with <compare_branch>
+    * If <compare_branch> is omitted, an attempt will be made to use the `previous` branch.
+    * This option enjoys a flexible syntax: `--ignore[= ]<[[A,M,D]:][PATTERN]>` for arbitrarily precise ignores;
+      The following usage examples showcase multiple ways to do the same thing using said syntax:
+       (ignore changes to files in the "build" directory),
+       (ignore (A|a)dditions to the "app/views" directory),
+       (ignore (D|d)eletions)
+       ` branch changes --ignore=build --ignore 'a:app/views' --ignore=D <compare_branch> `
+       ` branch changes --ignore build --ignore='A:app/views' --ignore=d <compare_branch> `
+       ` branch changes --ignore=build --ignore 'A:app/views' --ignore D <compare_branch> `
+
+EOL
+
+	exit 0
+}
+
+CWD=${PWD:="$(pwd)"}
+declare -i is_repo=0
+if [[ ! -d "${CWD}/.git" ]]; then
+	is_repo=1
+	for d in $(echo "${PWD//\//$IFS}" | tac | head -n-1); do
+		# gleaned a strategy involving $((is_repo==0?++is_repo:--is_repo))
+		# prob stupid, but *might* be able to facilitate differentiating between nested modules and repos.
+		# or even just false matching on a .git way up the dir stack. (return 0: repo, 1: not repo, 2: maybe module, or false match)
+		# ...not dealing with it right now.
+		[[ ! -d "${CWD%{d}\/*}/.git" ]] || { is_repo=0; break; }
+	done
+	((is_repo==0)) || {
+		echo "'${CWD}' is not a git repository." >> /dev/stderr
+		exit 1
+	}
+fi
+
+_repo_url() { git remote get-url origin; }
+_branch_url() { _repo_url; }
+_repo_abspath() { git rev-parse --show-toplevel; }
+
+_branch_repo() {
+	_repo_remote() { _repo_url | sed 's|^.*[\/]||'; }
+	_repo_local() { basename "$(_repo_abspath)"; }
+	_repo_remote 2>/dev/null || _repo_local
+}
+
+_branch_account() {
+	local url=$(_repo_remote 2>/dev/null) || exit 2
+	echo "${url//\//$IFS}" | tail -n2 | head -n1
+}
+
 ### git branch name
 _branch_name() { git --no-pager rev-parse --abbrev-ref HEAD 2>/dev/null; }
 
@@ -57,6 +122,14 @@ _branch_changes() {
     else
         _git_diff
     fi
+}
+
+### undo changes since last commit (completely obliterates everything so you can actually move around)
+### finally...
+_branch_undo() {
+    git checkout .
+    git reset --hard HEAD
+    git clean -fd
 }
 
 _branch_${@}
