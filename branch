@@ -1,6 +1,59 @@
 #!/usr/bin/env bash
 
-[[ "${1,,}" != +(\-)@(h)?(elp) ]] || { cat <<'EOL'
+remind() { cat <<'EOL'
+### Steps to Selectively Remove a Commit
+
+1. **Start Interactive Rebase**
+   Begin an interactive rebase on the branch where the unwanted commit exists. Use the commit hash of the commit just before the one you want to remove:
+
+   ```bash
+   git checkout your-branch
+   git rebase -i <commit-hash>^
+   ```
+
+2. **Edit the Rebase List**
+   In the text editor that opens, you'll see a list of commits. Find the commit you want to remove and change the word `pick` to `drop` (or simply delete the line). For example:
+
+   ```
+   pick abc123 Commit message 1
+   drop def456 Commit message to remove
+   pick ghi789 Commit message 2
+   ```
+
+3. **Save and Exit**
+   Save the changes and exit the editor. Git will reapply the remaining commits, excluding the one you dropped.
+
+4. **Force Push the Changes**
+   Since you’ve rewritten the commit history, you will need to force push your branch:
+
+   ```bash
+   git push origin your-branch --force
+   ```
+
+5. **Create a New Pull Request (if needed)**
+   If you want to move the dropped commit to a new pull request, you can create a new branch from the commit you dropped:
+
+   ```bash
+   git checkout -b new-branch <commit-hash-of-dropped-commit>
+   git push origin new-branch
+   ```
+
+### Summary
+- Use interactive rebase to selectively remove the commit.
+- Change `pick` to `drop` for the commit you want to remove.
+- Force push your branch after the rebase.
+- Optionally create a new branch for the removed commit.
+
+This method preserves all your other commits and only removes the specified commit from your pull request.
+
+EOL
+    exit 0
+}
+
+[[ "${1,,}" != *(\-)@(remind)* ]] || remind
+
+[[ "${1,,}" != +(\-)@(h)?(elp) ]] || {
+    [[ "${2,,}" == *(\-)@(remind)* ]] && remind || cat <<'EOL'
 USAGE:
    branch <OPTION>
 
@@ -10,8 +63,12 @@ OPTIONS:
    parent     prints name of parent branch.
    previous   prints name of previous branch.
    repo       prints the name of the repo.
+   is_repo    fails if not a repo.
+   abspath    prints absolute path to repo root dir.
    owner,     prints account name of user/org that repo belongs to.
-    user,org
+    user,
+     org
+   remind     reminders for shit you always forget how to do with git
 
  [actions]
    pushb      like pushd, but for branches.
@@ -33,31 +90,35 @@ EOL
 	exit 0
 }
 
-CWD=${PWD:="$(pwd)"}
-declare -i is_repo=0
-if [[ ! -d "${CWD}/.git" ]]; then
-	is_repo=1
-	for d in $(echo "${PWD//\//$IFS}" | tac | head -n-1); do
-		# gleaned a strategy involving $((is_repo==0?++is_repo:--is_repo))
-		# prob stupid, but *might* be able to facilitate differentiating between nested modules and repos.
-		# or even just false matching on a .git way up the dir stack. (return 0: repo, 1: not repo, 2: maybe module, or false match)
-		# ...not dealing with it right now.
-		[[ ! -d "${CWD%{d}\/*}/.git" ]] || { is_repo=0; break; }
-	done
-	((is_repo==0)) || {
-		echo "'${CWD}' is not a git repository." >> /dev/stderr
-		exit 1
-	}
-fi
+#_is_repo() {
+#	local TWD="${1:-${PWD:=$(pwd)}}"
+#	local -i is_repo=1
+#	for d in $(echo "${TWD//\//$IFS}" | tac | head -n-1); do
+#		# gleaned a strategy involving $((is_repo==0?++is_repo:--is_repo))
+#		# prob stupid, but *might* be able to facilitate differentiating between nested modules and repos.
+#		# or even just false matching on a .git way up the dir stack. (return 0: repo, 1: not repo, 2: maybe module, or false match)
+#		# ...not dealing with it right now.
+#		[[ ! -d "${TWD%{d}\/*}/.git" ]] || { is_repo=0; break; }
+#	done
+#	return $((is_repo))
+#}
 
 _repo_url() { git remote get-url origin; }
 _branch_url() { _repo_url; }
 _repo_abspath() { git rev-parse --show-toplevel; }
+_branch_abspath() { _repo_abspath ; }
 
 _branch_repo() {
 	_repo_remote() { _repo_url | sed 's|^.*[\/]||'; }
 	_repo_local() { basename "$(_repo_abspath)"; }
 	_repo_remote 2>/dev/null || _repo_local
+}
+
+_is_repo() { 
+	local TWD="${1:-${PWD:=$(pwd)}}"
+	if [[ -d "$TWD" ]]; then cd "$TWD" ; else [[ ! -d "${TWD%\/*}" ]] || cd "${TWD%\/*}" ; fi
+	local b="$(_branch_repo)"
+	[[ -n $b ]]
 }
 
 _branch_account() {
@@ -79,11 +140,12 @@ _branch_pushb() {
 }
 
 ### git previous branch (like popd for branches)
-_branch_previous() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | grep -Po "checkout: moving from\s*\K\w+.*(?= to ${_})" | grep -v -m1 "$_"; }
-_branch_popb() { git checkout "$(_branch_previous)"; }
+_previous_branch() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | grep -Po "checkout: moving from\s*\K\w+.*" | head -n1 | cut -d\  -f1; }
+_branch_previous() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | grep -Po "checkout: moving from\s*\K\w+.*(?= to ${_})" | grep -v -m1 "$_" || _previous_branch; }
+_branch_popb() { local popto; [[ "${1,,}" != *(\-)@(p)?(arent) ]] && popto="$(_branch_previous)" || popto="$(_branch_parent)"; git checkout "$popto"; }
 
 ### git parent branch
-_branch_parent() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | tac | grep -m1 -Po "checkout: moving from\s*\K\w+.*(?= to ${_})"; }
+_branch_parent() { : "$(_branch_name)"; git --no-pager log -g --abbrev-commit --oneline --no-color | tac | grep -m1 -Po "checkout: moving from\s*\K\w+.*(?= to ${_})" || _previous_branch; }
 
 ### git branch status
 _branch_status() { git --no-pager status -s 2>/dev/null; }
@@ -94,42 +156,60 @@ _branch_status() { git --no-pager status -s 2>/dev/null; }
 # [[A,M,D][:<STRING>]]
 # USAGE EXAMPLE: railsh git_branch_files --ignore=app/assets/images/drinks --ignore 'a:app/views' --ignore=M
 _branch_changes() {
-    local a arg compare_branch ignores fnameonly=false
-    #(WIP)   local -a hides=() shows=()
-    [[ "$1" == +(\-)* ]] || compare_branch="$1"
-    for((a=1;a<=$#;a++)){
-        [[ "${!a,,}" != +(\-)@(name|file|short|abbrev)* ]] || fnameonly=true
-        [[ "${!a,,}" != +(\-)@(ignore)* ]] || {
-            [[ "${!a,,}" == +(\-)@(ignore)*\=* ]] || ((++a))
-            arg="${!a##*\=}"
-            case "${arg,,}" in
-            [adm]|[adm]\:*) [[ "${arg,,}" != [adm]\:* ]] && ignores[0]+="^${arg^}|" || { : "${arg%%\:*}"; ignores[0]+="^${_^}\s*${arg#*\:}|"; } ;;
-            *) ignores[0]+="${arg}|"
-            esac
+    _branch_changes() {
+        local a arg compare_branch ignores fnameonly=false
+        #(WIP)   local -a hides=() shows=()
+        [[ "$1" == +(\-)* ]] || compare_branch="$1"
+        for((a=1;a<=$#;a++)){
+            [[ "${!a,,}" != +(\-)@(name|file|short|abbrev)* ]] || fnameonly=true
+            [[ "${!a,,}" != +(\-)@(ignore)* ]] || {
+                [[ "${!a,,}" == +(\-)@(ignore)*\=* ]] || ((++a))
+                arg="${!a##*\=}"
+                case "${arg,,}" in
+                [adm]|[adm]\:*) [[ "${arg,,}" != [adm]\:* ]] && ignores[0]+="^${arg^}|" || { : "${arg%%\:*}"; ignores[0]+="^${_^}\s*${arg#*\:}|"; } ;;
+                *) ignores[0]+="${arg}|"
+                esac
+            }
         }
-    }
-    _git_diff() {
-        if ((${#ignores} != 0)); then
-            ignores="${ignores:: -1}"
-            [[ "${ignores//[!\|]/}" != +(\|) ]] || ignores="($ignores)"
-            git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)} | grep -Ev "$ignores"
+        _git_diff() {
+            if ((${#ignores} != 0)); then
+                ignores="${ignores:: -1}"
+                [[ "${ignores//[!\|]/}" != +(\|) ]] || ignores="($ignores)"
+                git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)} | grep -Ev "$ignores"
+            else
+                git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)}
+            fi
+        }
+        if $fnameonly ; then
+            _git_diff | awk '{print $2}'
         else
-            git --no-pager diff --name-status ${compare_branch:-$(_branch_previous)}
+            _git_diff
         fi
     }
-    if $fnameonly ; then
-        _git_diff | awk '{print $2}'
+    if [[ "${1,,}" == +(\-)@(v)?(erbose) ]]; then
+        _branch_changes "${@:2}"
     else
-        _git_diff
+        _branch_changes "${@}" | awk '{print $2}' 2>/dev/null
     fi
 }
-
 ### undo changes since last commit (completely obliterates everything so you can actually move around)
 ### finally...
 _branch_undo() {
+	_is_repo && {
     git checkout .
     git reset --hard HEAD
     git clean -fd
+  }
 }
+
+_branch_is_repo() { _is_repo "${@}"; }
+
+
+#		if [[ "${1,,}" == *(\-)is?([[:print:]])repo* ]]
+#		((is_repo==0)) || {
+#			echo "'${CWD}' is not a git repository." >> /dev/stderr
+#			exit 1
+#		}
+#	fi
 
 _branch_${@}
