@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+ 
+# To fork a repository using the terminal with Git, you can follow these steps:
+# 
+# 1. Open the terminal on your computer.
+# 2. Navigate to the directory where you want to store the forked repository. You can use the `cd` command to change directories.
+#    For example:
+#    ```
+#    cd ~/Documents/
+#    ```
+# 3. Clone the original repository by running the following command:
+#    ```
+#    git clone <original_repository_url>
+#    ```
+#    Replace `<original_repository_url>` with the URL of the repository you want to fork. This will create a local copy of the original repository on your computer.
+# 4. Change into the cloned repository's directory:
+#    ```
+#    cd <repository_folder_name>
+#    ```
+#    Replace `<repository_folder_name>` with the actual name of the cloned repository's folder.
+# 5. Configure the forked repository's remote URL with the following command:
+#    ```
+#    git remote set-url origin <forked_repository_url>
+#    ```
+#    Replace `<forked_repository_url>` with the URL of the repository where you want to fork the original repository. This sets the forked repository as the remote origin.
+# 6. Verify that the forked repository's remote URL is set correctly by running:
+#    ```
+#    git remote -v
+#    ```
+#    It should display the new forked repository's URL as the origin.
+# 7. You're now ready to work with the forked repository. You can make changes, create branches, and push your changes to the forked repository using standard Git commands.
+# 
+# Remember, forking a repository creates a separate copy under your account. You can make changes to your forked repository without affecting the original repository. If you want to contribute your changes back to the original repository, you can create a pull request from your forked repository.
+theRepo="$1"
+mkrepo "$theRepo"
+[[ "$theRepo" != *'.git' ]] || theRepo="${theRepo:: -4}"
+theRepo="${theRepo#*http?(s)\:\/\/?(www.)}"
+theRepo="${theRepo%%\.*}/${theRepo#*\/}"
+cd ~/.src/github/"${1#*.com\/}"
+git remote set-url origin "$1"
+git remote -v
+ 
+
+## 
+# Yes, you can keep your forked repository synced with the original repository by configuring a remote upstream link and pulling changes from it. This allows you to incorporate any updates or changes made to the original repository into your fork. Here's how you can do it:
+# 
+# 1. Open the terminal and navigate to the directory of your forked repository.
+# 2. Configure the upstream remote by running the following command:
+#    ```
+#    git remote add upstream <original_repository_url>
+#    ```
+#    Replace `<original_repository_url>` with the URL of the original repository you forked from.
+# 3. Verify that the upstream remote is set correctly by running:
+#    ```
+#    git remote -v
+#    ```
+#    It should display both the origin remote (your forked repository) and the upstream remote (the original repository).
+# 4. To sync your fork with the original repository, first, fetch the branches and commits from the upstream remote:
+#    ```
+#    git fetch upstream
+#    ```
+# 5. Switch to the branch you want to update (e.g., `main` or `master`):
+#    ```
+#    git checkout <branch_name>
+#    ```
+#    Replace `<branch_name>` with the name of the branch you want to update.
+# 6. Merge the changes from the upstream repository into your branch:
+#    ```
+#    git merge upstream/<branch_name>
+#    ```
+#    Replace `<branch_name>` with the name of the branch you want to merge from the upstream repository.
+# 7. If there are no conflicts, the changes from the upstream repository will be incorporated into your forked repository. If conflicts arise, you will need to resolve them manually.
+# 8. Finally, push the merged changes to your forked repository on GitHub:
+#    ```
+#    git push origin <branch_name>
+#    ```
+#    Replace `<branch_name>` with the name of the branch you merged the changes into.
+# 
+# By following these steps, you can periodically update your forked repository with the latest changes from the original repository, ensuring that your fork remains synced.

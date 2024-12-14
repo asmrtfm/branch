@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# gh repo create nightly --private
+# git init
+# git add .
+# git commit -m "initial commit"
+# git remote add origin https://github.com/asmrtfm/nightly
+# git push --set-upstream origin main
+
+[[ -n "$PWD" ]] || PWD="$(pwd)"
+newRepo="${1:-${PWD##*\/}}"
+
+if ask "are you in the target directory"; then
+	gh repo create "$newRepo" --private
+	git init
+	git add .
+	git commit -m "initial commit"
+	git remote add origin "https://github.com/asmrtfm/${newRepo}"
+	git push --set-upstream origin main
+fi

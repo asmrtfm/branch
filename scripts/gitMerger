@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+[[ "${1,,}" != +(\-)@(h)?(elp) ]] || { cat <<'EOL'
+
+USAGE:
+   pass in a commit hash;
+   its changes will be merged into current branch.
+
+EOL
+	exit 0
+}
+
+# TODO: look into specifying branch to merge with.
+#       unless already a thing,
+#              should be easily achievable with our `branch` command.
+
+
+# * After resolving the conflicts, mark them with:
+#   ` git add/rm <pathspec> `
+#   and then run:
+#    ` git cherry-pick --continue `
+#
+# * You can instead skip this commit with:
+#   ` git cherry-pick --skip `
+#
+# * To abort and get back to the state before "git cherry-pick", run:
+#   ` git cherry-pick --abort `
+#
+
+show_hints() { cat <<'EOL'
+_________________________________________________
+# <<<<<<< HEAD                                  #
+# Existing code here (current branch)           #
+# =======                                       #
+# Incoming code here (from branch being merged) #
+# >>>>>>> incoming-branch                       #
+-------------------------------------------------
+
+EOL
+}
+
+
+#conflict_resolution_menu() { show_hints | head -n $(rails --help | grep -ns 'All commands can be run with -h (or --help) for more information.' | cut -d\: -f1); }
+
+#menu_options() { printf '%s\n' 'continue' 'skip' 'abort'; }
+
+
+# preview command must be in PATH, does not seem to be able to be a function even when exported with -f (haven't tried declare -F though)
+fz_conflicts() { fzf --disabled --no-sort --header-lines=8 --layout=reverse --border=rounded --info=inline --preview "show_conflicts {}" --preview-window=up:50%:wrap ; }
+
+_merge() { git merge "$1" 2>>/dev/stdout || true; }
+
+[[ -n $ARBITRAY_LIMIT ]] || ARBITRARY_LIMIT=303
+
+declare -a conflicts=()
+while read conflicts[${#conflicts[@]}]; do
+	((${#conflicts[@]} < ARBITRARY_LIMIT)) || break
+done < <(_merge "$1" | grep --color=never -Pos "CONFLICT \(content\)\: Merge conflict in \K.*" | awk '!a[$0]++' )
+
+while ((${#conflicts[@]} > 0)); do
+	tput clear
+	filetoedit=$({ show_hints ; printf '%s\n' ${conflicts[@]} ; } | fz_conflicts) || break
+	[[ -f "$filetoedit" ]] || break
+	micro "$filetoedit"
+	ask -s -n "run git add to mark conflicts within '$filetoedit' as resolved?" || {
+	  git add "$filetoedit"
+		for((i=0;i<${#conflicts[@]};i++)){ [[ "${conflicts[i]}" != "$filetoedit" ]] || unset conflicts[$i] ; }
+	}
+done
+
+if ((${#conflicts[@]} == 0)); then
+	mergeAction=$(ask --prompt="what do you say: " " shall we finalize the merger?\ntype one of 'continue', 'abort', 'skip'\ntype 'nvm' or just ctrl+c it to do nothing.\n")
+	case "${mergeAction,,}" in
+	'continue'|'skip'|'abort') git merge --${mergeAction} ;;
+	*) exit 0
+	esac
+fi

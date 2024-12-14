@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+Usage() { cat <<'EOL'
+USAGE:
+   git-birth <LOCAL_REPO_PATH ...>
+SYNOPSIS:
+   Uses `git log` to show when <REPO(S)...> were created.
+
+EOL
+	exit ${1:-0}
+}
+[[ "${1,,}" != +(\-)@(h)?(elp) ]] || Usage
+
+Birth() { cd "$1" 2>/dev/null; echo "$(date +'%Y%m%d%H%M%S' --date="$(git --no-pager show --quiet --format=%ci $(git rev-list --max-parents=0 HEAD) | bashed '%\ *')") $1"; }
+trustButVerify() { [[ -d "$1/.git" ]] || { echo "'$1' does not appear to be a git repository..."; exit 1; }; Birth "$1"; }
+
+if (($#==0)); then trustButVerify "$PWD"; else
+	for((a=1;a<=$#;a++)){ trustButVerify "${!a}"; }
+fi
+

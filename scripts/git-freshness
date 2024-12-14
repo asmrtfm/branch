@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+Usage() { cat <<'EOL'
+USAGE:
+   git-freshness <LOCAL_REPO_PATH ...>
+SYNOPSIS:
+   Uses `git log` to show the most recent date that there was activity in <REPO(S)...>
+
+EOL
+	exit ${1:-0}
+}
+[[ "${1,,}" != +(\-)@(h)?(elp) ]] || Usage
+
+Stell() { cd "$1" 2>/dev/null; echo "$(date +'%Y%m%d%H%M%S' --date="$(git --no-pager log -1 --format="%ad" -- . | bashed '%\ *')") $1"; }
+trustButVerify() { [[ -d "$1/.git" ]] || { echo "'$1' does not appear to be a git repository..."; exit 1; }; Stell "$1"; }
+
+if (($#==0)); then trustButVerify "$PWD"; else
+	for((a=1;a<=$#;a++)){ trustButVerify "${!a}"; }
+fi

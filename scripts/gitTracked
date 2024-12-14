@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+[[ -e "$1" ]] || { echo -e "\e[1;31mNonExistantPathError\e[0m" > /dev/stderr ; exit 2; }
+# Check if the path is inside a Git repository
+if git -C $(dirname "$1") rev-parse --git-dir > /dev/null 2>&1; then
+    # If it is, check if the file is tracked by Git
+    if ! git -C $(dirname "$1") ls-files --error-unmatch "$1" > /dev/null 2>&1; then
+        exit 1
+    fi
+else
+    exit 1
+fi

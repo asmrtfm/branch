@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+
+# stashBox
+# boxup (because we literally zip it to ../<unique_archive_name.zip> )
+# upstash
+
+
+
+#			
+#			On branch fix/drink_variants
+#			Changes to be committed:
+#			  (use "git restore --staged <file>..." to unstage)
+#				modified:   db/migrate/20241030012559_create_variants.rb
+#				modified:   db/migrate/20241030012642_create_venue_drinks.rb
+#			
+#			Changes not staged for commit:
+#			  (use "git add/rm <file>..." to update what will be committed)
+#			  (use "git restore <file>..." to discard changes in working directory)
+#				modified:   app/models/brand.rb
+#				modified:   app/models/category.rb
+#				modified:   app/models/company.rb
+#				modified:   app/models/drink.rb
+#				modified:   app/models/drink_variant.rb
+#				modified:   app/models/subcategory.rb
+#				modified:   app/models/tertiary_category.rb
+#				modified:   app/models/variant.rb
+#				modified:   app/models/venue.rb
+#				modified:   app/models/venue_drink.rb
+#				modified:   app/models/venue_drink_variant.rb
+#				modified:   app/models/venue_variant.rb
+#				modified:   app/views/drinks/_drink_card.html.erb
+#				modified:   app/views/drinks/index.html.erb
+#				modified:   db/seeds.rb
+#				deleted:    storage/.keep
+#				deleted:    tmp/.keep
+#				deleted:    tmp/pids/.keep
+#				deleted:    tmp/storage/.keep
+#			
+#			Untracked files:
+#			  (use "git add <file>..." to include in what will be committed)
+#				bin/db_renew
+#				config/initializers/string_extensions.rb
+#				lib/modules/
+#			
+
+
+
+
+show_hints() { cat <<'EOL'
+_________________________________________________
+# <<<<<<< HEAD                                  #
+# Existing code here (current branch)           #
+# =======                                       #
+# Incoming code here (from branch being merged) #
+# >>>>>>> incoming-branch                       #
+-------------------------------------------------
+
+EOL
+}
+
+_now() { date '+%Y%m%d%H%HM%S'; }
+declare -g archive_time="$(_now)"
+declare -g archive_manifest=../"${archive_time}.a_manifest.list"
+declare -g archive_file=../"${archive_time}.a_stash.zip"
+declare -ga fz_opts=(
+	'-m'
+	'--disabled'
+	'--no-sort'
+	'--layout=reverse'
+	'--border=rounded'
+	'--info=inline'
+	'--preview-window=up:50%:wrap'
+)
+# example:   (omit last one if not using a preview command)
+#  fz_multi_select() { fzf --header-lines=${1:-1} ${fz_opts[@]::${#fz_opts[@]}} --preview "echo {}" ${fz_opts[-1]} ; }
+#  { echo 'this be ye headarrr'; printf '%s\n' "${@}"; } | fz_multi_select
+
+
+# preview command must be in PATH (./<schript> also works)
+#fz_changes() { fzf --no-sort --header-lines=8 --layout=reverse --border=rounded --info=inline --preview "git diff --cached {} | tee -a $1"  ; }
+
+# cherry_pick() { git cherry-pick "$1" 2>>/dev/stdout || true; }
+
+### generalizable
+# $1: path to list file for storing selections (used to create archive, like a manifest)
+# $2: all positional params following $1 are treated as header lines.
+# - : input comes through pipe, presumably from `branch changes ...`
+# fz_multi_select() { { printf '%s\n' "${@:2}"; cat - ; } | fzf --header-lines=$(($# - 1)) ${fz_opts[@]::${#fz_opts[@]}} --preview "git --no-pager diff {}" ${fz_opts[-1]} | tee -a "$1"; }
+
+### fubu
+# $@ : header lines
+#  - : selectables through pipe via `branch changes ...`
+fz_multi_select_w_diff() { { printf '%s\n' "${@}"; cat - ; } | fzf --header-lines=$(($# > 0 ? $# : 1)) ${fz_opts[@]::${#fz_opts[@]}} --preview "git --no-pager diff {}" ${fz_opts[-1]} | tee -a "$archive_manifest"; }
+fz_multi_select_w_interactive_status() { { printf '%s\n' "${@}"; cat - ; } | fzf --header-lines=$(($# > 0 ? $# : 1)) ${fz_opts[@]::${#fz_opts[@]}} --preview "git --no-pager diff {}" ${fz_opts[-1]} | tee -a "$archive_manifest"; }
+-m --disabled --no-sort --layout=reverse --border=rounded --info=inline --preview-window=up:50%:wrap
+)
+
+# preview changes in files, multi-selectable fzf to archive manifest.
+# confirmation or recursion.
+# finally use files in archive list to generate zip `zip ../<archive_time>.a_stash.zip $((($(wcl ../<archive_time>.a_manifest.list) > 0)) && cat <> || echo <>)`
+
+create_stashbox() {
+	echo "Archive Manifest For StashBox: '${archive_file}'"
+	cat "$archive_manifest"
+	if ask -s -y "create stashbox?"; then
+		if (($(wcl $archive_manifest) > 0)); then
+			zip $archive_file $(< $archive_manifest) $archive_manifest
+		fi
+	fi
+}
+
+### generalizable
+# HeaderLines=(
+# 	...
+# )
+# # commandline oprtions are passed to `branch`
+# branch changes ${@} | fz_multi_select "${HeaderLines[@]}"
+
+### fubu
+HeaderLines=(
+	"Create Manifest"
+  "First, select the ${HeaderLines[0]} files you would like to stash."
+  "You will be given an opportunity to include any untracked or otherwise changes to the stash."
+	'(multiselect) MODIFIED files:'
+	"Now, select any untracked changes you'd like."
+	'ADDED (UNTRACKED)'
+	'DELETED'
+
+)
+
+branch changes --ignore=D --ignore=A --ignore=U | cut -d$'\t'  -f2 | fz_multi_select "${HeaderLines[@]::4}" " "
+if (($(branch changes --ignore=D --ignore=M | wcl) > 0)); then
+	branch changes --ignore=D --ignore=M | cut -d$'\t'  -f2 | fz_multi_select "${HeaderLines[@]:5:2}" " "
+fi
+
+# * TODO:  optional non-destructive mode which backs up entire repo along with [manifest] and diff !!!!!!! (only caveat is time and disk space but not that bad...)
+
+# what to do with un-stashed (blow away?)
+
+# while ((${#changes[@]} > 0)); do
+# 	tput clear
+# 	file_to_stash=$({ show_hints ; printf '%s\n' ${changes[@]} ; } | fz_changes) || break
+# 	[[ -f "$file_to_stash" ]] || break
+# 	micro "$file_to_stash"
+# 	ask -s -n "run git stash to save conflicts within '$filetoedit' as resolved?" || {
+# 	  git add "$filetoedit"
+# 		for((i=0;i<${#conflicts[@]};i++)){ [[ "${conflicts[i]}" != "$filetoedit" ]] || unset conflicts[$i] ; }
+# 	}
+# done
+# 
+# if ((${#conflicts[@]} == 0)); then
+# 	cherryAction=$(ask --prompt="what do you say: " " shall we finalize the cherry-pick?\ntype one of 'continue', 'abort', 'skip'\ntype 'nvm' or just ctrl+c it to do nothing.\n")
+# 
+# 	case "${cherryAction,,}" in
+# 	'continue'|'skip'|'abort') git cherry-pick --${cherryAction} ;;
+# 	*) exit 0
+# 	esac
+# fi

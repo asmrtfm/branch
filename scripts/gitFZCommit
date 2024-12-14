@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+declare -ga fz_opts=(
+	'-m'
+	'--disabled'
+	'--no-sort'
+	'--layout=reverse'
+	'--border=rounded'
+	'--info=inline'
+	'--preview-window=up:50%:wrap'
+)
+
+fz_commits() { { printf '%s\n' "${@}"; cat - ; } | fzf --header-lines=$(($# > 0 ? $# : 1)) ${fz_opts[@]:1:${#fz_opts[@]}-1} --preview "gitCommitz {}" ${fz_opts[-1]} | awk '{print $2}'; }
+
+git --no-pager log | grep -Es "^commit" | head -n42 | fz_commits "SELECT A COMMIT"
